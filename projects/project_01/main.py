@@ -1,6 +1,6 @@
-from solutions.project1 import secret_image_processing
 import sys, numpy as np, cv2 as cv
 import screeninfo
+from program_2 import process_contours
 
 screen = screeninfo.get_monitors()[0]
 width, height = screen.width, screen.height
@@ -9,7 +9,7 @@ cv.namedWindow("p1", cv.WINDOW_NORMAL)
 cv.moveWindow("p1", screen.x - 1, screen.y - 1)
 cv.setWindowProperty("p1", cv.WND_PROP_FULLSCREEN, cv.WINDOW_FULLSCREEN)
 
-capture = cv.VideoCapture(2, cv.CAP_ANY)
+capture = cv.VideoCapture("resources/rgb_ball_720.mp4", cv.CAP_ANY)
 
 if not capture.isOpened():
     print("Failed to initialise camera capture. Check camera connection")
@@ -19,8 +19,7 @@ last_frame = None
 while True:
     _, frame = capture.read()
 
-    # implement this
-    frame = secret_image_processing(frame)
+    frame = process_contours(frame)
 
     frame = frame if frame is not None else last_frame
     last_frame = frame
