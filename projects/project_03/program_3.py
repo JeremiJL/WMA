@@ -6,37 +6,70 @@ import screeninfo
 from cv2 import Mat
 
 
-def filter_matches(matches: Sequence[cv.DMatch], kp2: cv.KeyPoint) -> Sequence[Sequence[cv.DMatch]]:
+def filter_matches(matches: Sequence[Sequence[cv.DMatch]], kp2: Sequence[cv.KeyPoint]) -> Sequence[Sequence[cv.DMatch]]:
+
+    filtered = []
+
     # filter matches based on distance comparison to second best match
     distance_filtered = []
 
-    average_x = 0
-    for m, n in matches:
-        t_idx = m.trainIdx
-        average_x += kp2[t_idx].pt[0]
-        if m.distance < 0.5 * n.distance:
-            distance_filtered.append([m])
+    if not matches:
+        return []
 
-    average_x /= len(matches)
+    for pair in matches:
+        if len(pair) < 2:
+            continue
+
+        m, n = pair
+        if m.distance < 0.5 * n.distance:
+            distance_filtered.append(m)
+
+    if not distance_filtered:
+        return []
+
+    # update filtered list
+    filtered = distance_filtered
 
     # take top X matches
-    top_x = [m[0] for m in distance_filtered]
-    top_x = sorted(top_x, key=lambda match: match.distance)
-    top_x = top_x[:10]
+    top_A_matches = []
+
+    top_A_matches = sorted(filtered, key=lambda match: match.distance)
+    top_A_matches = top_A_matches[:10]
+
+    # update filtered list
+    filtered = top_A_matches
 
     # filter matches based on the coordinates of the point
     coordinates_filtered = []
 
-    for m in top_x:
+    average_x = 0
+    average_y = 0
+    for m in filtered:
         t_idx = m.trainIdx
-        x = kp2[t_idx].pt[0]
-        if average_x * 0.5 < x < average_x * 2:
-            coordinates_filtered.append(x)
+        (x, y) = kp2[t_idx].pt
+        average_x += x
+        average_y += y
 
-    filtered = [[m] for m in coordinates_filtered]
+    average_x /= len(filtered)
+    average_y /= len(filtered)
+
+    for m in filtered:
+        t_idx = m.trainIdx
+        (x,y) = kp2[t_idx].pt
+        if (x < average_x * 1.5) and (y > average_y * 0.7):
+            coordinates_filtered.append(m)
+
+    # update filtered list
+    filtered = coordinates_filtered
+
+    # format filtered list
+    filtered = [[m] for m in filtered]
     return filtered
 
-def mark_boundary(matches: Sequence[Sequence[cv.DMatch]], img_with_matches: Mat, query_img: Mat, kp2: cv.KeyPoint):
+def mark_boundary(matches: Sequence[Sequence[cv.DMatch]], img_with_matches: Mat, query_img: Mat, kp2: Sequence[cv.KeyPoint]):
+    if not matches:
+        return
+
     xs = []
     ys =[]
 
@@ -56,6 +89,9 @@ def mark_boundary(matches: Sequence[Sequence[cv.DMatch]], img_with_matches: Mat,
     cv.rectangle(img_with_matches, top_left_corner, bottom_right, (0, 255, 0), 3)
 
 def process_matching(frame: cv.Mat, img_query: cv.Mat) -> cv.Mat:
+    if frame is None or img_query is None:
+        return frame
+
     # cast to gray scale
     query_img_gray = cv.cvtColor(img_query, cv.COLOR_BGR2GRAY)
     frame_gray = cv.cvtColor(frame, cv.COLOR_BGR2GRAY)
@@ -66,6 +102,9 @@ def process_matching(frame: cv.Mat, img_query: cv.Mat) -> cv.Mat:
     # find the keypoints and descriptors with SIFT
     kp1, des1 = sift.detectAndCompute(query_img_gray, None)
     kp2, des2 = sift.detectAndCompute(frame_gray, None)
+
+    if des1 is None or des2 is None or len(kp2) == 0:
+        return frame
 
     # BFMatcher with default params
     bf = cv.BFMatcher()
@@ -104,7 +143,9 @@ def display():
 
     last_frame = None
     while True:
-        _, frame = capture.read()
+        ok, frame = capture.read()
+        if not ok:
+            break
 
         frame = process_matching(frame, query_img)
 
