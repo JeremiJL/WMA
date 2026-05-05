@@ -1,6 +1,59 @@
+from typing import Sequence
+
 import cv2 as cv
 import sys
 import screeninfo
+from cv2 import Mat
+
+
+def filter_matches(matches: Sequence[cv.DMatch], kp2: cv.KeyPoint) -> Sequence[Sequence[cv.DMatch]]:
+    # filter matches based on distance comparison to second best match
+    distance_filtered = []
+
+    average_x = 0
+    for m, n in matches:
+        t_idx = m.trainIdx
+        average_x += kp2[t_idx].pt[0]
+        if m.distance < 0.5 * n.distance:
+            distance_filtered.append([m])
+
+    average_x /= len(matches)
+
+    # take top X matches
+    top_x = [m[0] for m in distance_filtered]
+    top_x = sorted(top_x, key=lambda match: match.distance)
+    top_x = top_x[:10]
+
+    # filter matches based on the coordinates of the point
+    coordinates_filtered = []
+
+    for m in top_x:
+        t_idx = m.trainIdx
+        x = kp2[t_idx].pt[0]
+        if average_x * 0.5 < x < average_x * 2:
+            coordinates_filtered.append(x)
+
+    filtered = [[m] for m in coordinates_filtered]
+    return filtered
+
+def mark_boundary(matches: Sequence[Sequence[cv.DMatch]], img_with_matches: Mat, query_img: Mat, kp2: cv.KeyPoint):
+    xs = []
+    ys =[]
+
+    for match in matches:
+        t_idx = match[0].trainIdx
+        (x1, y1) = kp2[t_idx].pt
+        xs.append(x1)
+        ys.append(y1)
+
+    xs.sort()
+    ys.sort()
+
+    width_shift = query_img.shape[1]
+
+    top_left_corner = (int(xs[0] - 30) + width_shift, int(ys[0] - 30))
+    bottom_right = (int(xs[len(xs) - 1] + 30 + width_shift), int(ys[len(ys) - 1] + 30))
+    cv.rectangle(img_with_matches, top_left_corner, bottom_right, (0, 255, 0), 3)
 
 def process_matching(frame: cv.Mat, img_query: cv.Mat) -> cv.Mat:
     # cast to gray scale
@@ -18,31 +71,21 @@ def process_matching(frame: cv.Mat, img_query: cv.Mat) -> cv.Mat:
     bf = cv.BFMatcher()
     matches = bf.knnMatch(des1, des2, k=2)
 
-    # filter poor matches
-    good = []
-    for m, n in matches:
-        if m.distance < 0.5 * n.distance:
-            good.append([m])
-
-    # take top X matches
-    good_matches = [m[0] for m in good]
-    good_matches = sorted(good_matches, key=lambda match: match.distance)
-    good_matches = good_matches[:10]
-
-    good = [[m] for m in good_matches]
+    filtered_matches = filter_matches(matches=matches, kp2=kp2)
 
     # mark matches
     img_with_matches = cv.drawMatchesKnn(img_query,
                              kp1,
                              frame,
                              kp2,
-                             good,
+                             filtered_matches,
                              None,
                              matchColor=(100, 255, 0),
                              singlePointColor=(0, 0, 255),
                              flags=cv.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS)
+    # mark boundary
+    mark_boundary(filtered_matches, query_img=img_query, img_with_matches=img_with_matches, kp2=kp2)
     return img_with_matches
-
 
 
 def display():
