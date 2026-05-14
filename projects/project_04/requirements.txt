@@ -3,3 +3,4 @@ tensorflow
 matplotlib
 keras
 pydot
+scikit-learn
